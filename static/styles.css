@@ -244,6 +244,141 @@ input:not([type="file"]) {
   color: var(--warn);
 }
 
+.notice.warning {
+  background: #fff8e7;
+  border-color: #e6d19b;
+  color: #705416;
+}
+
+.pdf-import-link {
+  justify-self: start;
+}
+
+.pdf-import-shell,
+.draft-review,
+.draft-list {
+  display: grid;
+  gap: 20px;
+}
+
+.upload-panel fieldset {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 14px;
+}
+
+.upload-panel legend,
+.draft-card label > span,
+.save-panel label {
+  font-weight: 750;
+}
+
+.processing-panel,
+.save-panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  padding: 20px;
+}
+
+.processing-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.processing-panel[hidden],
+.draft-review[hidden] {
+  display: none;
+}
+
+.status-row,
+.review-head,
+.review-actions,
+.draft-card-top {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.progress .is-error {
+  background: var(--warn);
+}
+
+.draft-review h2,
+.draft-review p {
+  margin: 0;
+}
+
+.draft-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 14px;
+  padding: 20px;
+}
+
+.draft-card label:not(.accept-control) {
+  display: grid;
+  gap: 7px;
+}
+
+.accept-control {
+  align-items: center;
+  display: flex;
+  gap: 7px;
+}
+
+textarea {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  font: inherit;
+  line-height: 1.45;
+  padding: 10px 12px;
+  resize: vertical;
+  width: 100%;
+}
+
+.confidence {
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 5px 9px;
+}
+
+.confidence-high { background: #dbf0e9; color: #145d48; }
+.confidence-medium { background: #fff0c7; color: #76580d; }
+.confidence-low { background: #fae0d9; color: #8a3828; }
+
+.draft-source {
+  background: var(--panel-strong);
+  border-radius: 8px;
+  color: var(--muted);
+  padding: 12px;
+}
+
+.draft-source blockquote {
+  margin: 8px 0 0;
+  white-space: pre-wrap;
+}
+
+.remove-draft {
+  justify-self: start;
+}
+
+.save-panel {
+  align-items: end;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
 .deck-grid {
   display: grid;
   gap: 14px;
@@ -386,8 +521,14 @@ code {
   }
 
   .upload-row,
-  .actions {
+  .actions,
+  .save-panel {
     grid-template-columns: 1fr;
+  }
+
+  .review-head {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .deck-card,

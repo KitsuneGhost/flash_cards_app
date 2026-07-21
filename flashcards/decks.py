@@ -21,8 +21,15 @@ def save_import(user_id: int, filename: str, deck_name: str, cards: list[dict[st
                (deck_id, source_card_id, source_note_id, front, back, position, updated_at)
                VALUES (?, ?, ?, ?, ?, ?, ?)""",
             [
-                (deck_id, card["source_card_id"], card["source_note_id"], card["front"],
-                 card["back"], card["position"], now_iso())
+                (
+                    deck_id,
+                    card["source_card_id"],
+                    card["source_note_id"],
+                    card["front"],
+                    card["back"],
+                    card["position"],
+                    now_iso(),
+                )
                 for card in cards
             ],
         )

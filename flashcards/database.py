@@ -61,6 +61,44 @@ def init_db() -> None:
                 last_result TEXT,
                 updated_at TEXT
             );
+
+            CREATE TABLE IF NOT EXISTS pdf_import_jobs (
+                id TEXT PRIMARY KEY,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                original_filename TEXT NOT NULL,
+                mode TEXT NOT NULL CHECK (mode IN ('extract', 'generate')),
+                status TEXT NOT NULL,
+                document_title TEXT,
+                progress INTEGER NOT NULL DEFAULT 0,
+                total_chunks INTEGER NOT NULL DEFAULT 0,
+                processed_chunks INTEGER NOT NULL DEFAULT 0,
+                error_message TEXT,
+                warnings_json TEXT NOT NULL DEFAULT '[]',
+                cancel_requested INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                completed_at TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS generated_flashcard_drafts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                job_id TEXT NOT NULL REFERENCES pdf_import_jobs(id) ON DELETE CASCADE,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                question TEXT NOT NULL,
+                answer TEXT NOT NULL DEFAULT '',
+                evidence TEXT NOT NULL DEFAULT '',
+                page_number INTEGER,
+                section_title TEXT NOT NULL DEFAULT '',
+                chunk_id TEXT NOT NULL,
+                confidence REAL NOT NULL,
+                requires_input INTEGER NOT NULL DEFAULT 0,
+                accepted INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_pdf_jobs_user ON pdf_import_jobs(user_id, created_at);
+            CREATE INDEX IF NOT EXISTS idx_pdf_drafts_job ON generated_flashcard_drafts(job_id, id);
             """
         )
         columns = {row["name"] for row in connection.execute("PRAGMA table_info(decks)")}
@@ -68,3 +106,14 @@ def init_db() -> None:
             connection.execute(
                 "ALTER TABLE decks ADD COLUMN user_id INTEGER REFERENCES users(id) ON DELETE CASCADE"
             )
+        card_columns = {row["name"] for row in connection.execute("PRAGMA table_info(cards)")}
+        additions = {
+            "evidence": "TEXT",
+            "source_page": "INTEGER",
+            "source_section": "TEXT",
+            "source_document": "TEXT",
+            "generation_mode": "TEXT",
+        }
+        for name, column_type in additions.items():
+            if name not in card_columns:
+                connection.execute(f"ALTER TABLE cards ADD COLUMN {name} {column_type}")

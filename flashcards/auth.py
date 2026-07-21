@@ -48,9 +48,7 @@ def create_user(username: str, password: str) -> int:
 
 def authenticate_user(username: str, password: str) -> sqlite3.Row | None:
     with connect() as connection:
-        user = connection.execute(
-            "SELECT * FROM users WHERE username = ?", (username.strip(),)
-        ).fetchone()
+        user = connection.execute("SELECT * FROM users WHERE username = ?", (username.strip(),)).fetchone()
     return user if user and verify_password(password, user["password_hash"]) else None
 
 

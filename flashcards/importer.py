@@ -15,9 +15,30 @@ from typing import Any
 
 class Sanitizer(HTMLParser):
     allowed_tags = {
-        "a", "b", "blockquote", "br", "code", "div", "em", "i", "li", "ol",
-        "p", "pre", "span", "strong", "sub", "sup", "table", "tbody", "td",
-        "th", "thead", "tr", "u", "ul",
+        "a",
+        "b",
+        "blockquote",
+        "br",
+        "code",
+        "div",
+        "em",
+        "i",
+        "li",
+        "ol",
+        "p",
+        "pre",
+        "span",
+        "strong",
+        "sub",
+        "sup",
+        "table",
+        "tbody",
+        "td",
+        "th",
+        "thead",
+        "tr",
+        "u",
+        "ul",
     }
     allowed_attrs = {"class", "href"}
 
@@ -126,10 +147,15 @@ def parse_apkg(upload: bytes, filename: str) -> tuple[str, list[dict[str, Any]]]
             remaining = visible_fields[1:] or visible_fields[:1]
             back = "".join(f'<div class="field-block">{field}</div>' for field in remaining)
             deck_title = deck_names.get(int(row["did"]), deck_title)
-            cards.append({
-                "source_card_id": int(row["card_id"]), "source_note_id": int(row["nid"]),
-                "front": front, "back": back, "position": index,
-            })
+            cards.append(
+                {
+                    "source_card_id": int(row["card_id"]),
+                    "source_note_id": int(row["nid"]),
+                    "front": front,
+                    "back": back,
+                    "position": index,
+                }
+            )
     if not cards:
         raise ValueError("No studyable cards were found in that .apkg file.")
     return deck_title, cards
