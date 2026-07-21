@@ -70,8 +70,8 @@ require Ollama.
 
 ## Configure
 
-The application reads environment variables directly; it does not automatically load `.env` files. Example
-values are in `.env.example`. Export values in your shell or use your process manager.
+The application loads project settings from `.env`, while shell environment variables take precedence.
+Copy `.env.example` when setting up a new checkout, then adjust the local values as needed.
 
 | Variable | Default | Purpose |
 |---|---:|---|
