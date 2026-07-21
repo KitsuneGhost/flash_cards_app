@@ -1,0 +1,199 @@
+"""HTTP request parsing, routing, and responses."""
+
+from __future__ import annotations
+
+import json
+import posixpath
+import re
+import sqlite3
+import zipfile
+from http import HTTPStatus
+from http.cookies import SimpleCookie
+from http.server import BaseHTTPRequestHandler
+from pathlib import Path
+from typing import Any
+from urllib.parse import parse_qs, quote, unquote, urlparse
+
+from . import auth, decks, views
+from .config import MAX_UPLOAD_BYTES, SESSION_COOKIE, SESSION_DAYS, STATIC_DIR
+from .importer import parse_apkg
+
+
+def parse_multipart(body: bytes, content_type: str) -> dict[str, tuple[str, bytes]]:
+    match = re.search(r"boundary=(?P<boundary>[^;]+)", content_type)
+    if not match:
+        raise ValueError("Missing multipart boundary.")
+    delimiter = b"--" + match.group("boundary").strip('"').encode()
+    files: dict[str, tuple[str, bytes]] = {}
+    for part in body.split(delimiter):
+        part = part.strip()
+        if not part or part == b"--":
+            continue
+        if part.endswith(b"--"):
+            part = part[:-2].strip()
+        header_blob, _, content = part.partition(b"\r\n\r\n")
+        headers = header_blob.decode("utf-8", "replace").split("\r\n")
+        disposition = next((h for h in headers if h.lower().startswith("content-disposition:")), "")
+        name_match = re.search(r'name="([^"]+)"', disposition)
+        filename_match = re.search(r'filename="([^"]*)"', disposition)
+        if name_match and filename_match:
+            files[name_match.group(1)] = (
+                Path(filename_match.group(1)).name, content.removesuffix(b"\r\n")
+            )
+    return files
+
+
+class Handler(BaseHTTPRequestHandler):
+    server_version = "FlashCards/0.1"
+
+    def log_message(self, format: str, *args: Any) -> None:
+        print(f"{self.address_string()} - {format % args}")
+
+    def session_token(self) -> str | None:
+        morsel = SimpleCookie(self.headers.get("Cookie", "")).get(SESSION_COOKIE)
+        return morsel.value if morsel else None
+
+    def current_user(self) -> sqlite3.Row | None:
+        return auth.get_session_user(self.session_token())
+
+    def require_user(self) -> sqlite3.Row | None:
+        user = self.current_user()
+        if not user:
+            self.redirect(f"/login?next={quote(self.path)}")
+        return user
+
+    def send_html(self, body: bytes, status: HTTPStatus = HTTPStatus.OK) -> None:
+        self.send_response(status)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def send_json(self, payload: dict[str, Any], status: HTTPStatus = HTTPStatus.OK) -> None:
+        body = json.dumps(payload).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def redirect(self, path: str) -> None:
+        self.send_response(HTTPStatus.SEE_OTHER)
+        self.send_header("Location", path)
+        self.end_headers()
+
+    def redirect_with_cookie(self, path: str, token: str | None = None, clear: bool = False) -> None:
+        self.send_response(HTTPStatus.SEE_OTHER)
+        self.send_header("Location", path)
+        if token:
+            self.send_header("Set-Cookie", f"{SESSION_COOKIE}={token}; HttpOnly; SameSite=Lax; Path=/; Max-Age={SESSION_DAYS * 86400}")
+        if clear:
+            self.send_header("Set-Cookie", f"{SESSION_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0")
+        self.end_headers()
+
+    def read_form(self) -> dict[str, str]:
+        length = int(self.headers.get("Content-Length", "0"))
+        parsed = parse_qs(self.rfile.read(length).decode("utf-8", "replace"), keep_blank_values=True)
+        return {key: values[0] for key, values in parsed.items()}
+
+    def do_GET(self) -> None:
+        parsed = urlparse(self.path)
+        try:
+            if parsed.path.startswith("/static/"):
+                self.serve_static(parsed.path)
+            elif parsed.path == "/login":
+                if self.current_user():
+                    return self.redirect("/")
+                query = parse_qs(parsed.query)
+                self.send_html(views.render_auth_page("login", query.get("message", [""])[0], query.get("next", ["/"])[0]))
+            elif parsed.path == "/register":
+                if self.current_user():
+                    return self.redirect("/")
+                self.send_html(views.render_auth_page("register", parse_qs(parsed.query).get("message", [""])[0]))
+            elif parsed.path == "/":
+                if user := self.require_user():
+                    message = parse_qs(parsed.query).get("message", [""])[0]
+                    self.send_html(views.render_dashboard(user, decks.list_decks(user["id"]), message))
+            elif parsed.path.startswith("/deck/"):
+                if user := self.require_user():
+                    deck_id = int(parsed.path.removeprefix("/deck/").strip("/"))
+                    deck, cards = decks.get_deck_for_study(user["id"], deck_id)
+                    self.send_html(views.render_study(user, deck, cards))
+            else:
+                self.send_error(HTTPStatus.NOT_FOUND)
+        except (LookupError, ValueError):
+            self.send_error(HTTPStatus.NOT_FOUND)
+
+    def do_POST(self) -> None:
+        path = urlparse(self.path).path
+        if path == "/register":
+            self.handle_register()
+        elif path == "/login":
+            self.handle_login()
+        elif path == "/logout":
+            auth.delete_session(self.session_token())
+            self.redirect_with_cookie("/login", clear=True)
+        elif path == "/upload":
+            if user := self.require_user():
+                self.handle_upload(user)
+        elif path == "/api/progress":
+            if user := self.require_user():
+                self.handle_progress(user)
+        else:
+            self.send_error(HTTPStatus.NOT_FOUND)
+
+    def handle_register(self) -> None:
+        form = self.read_form()
+        try:
+            user_id = auth.create_user(form.get("username", ""), form.get("password", ""))
+        except ValueError as error:
+            return self.redirect(f"/register?message={quote(str(error))}")
+        self.redirect_with_cookie("/", token=auth.create_session(user_id))
+
+    def handle_login(self) -> None:
+        form = self.read_form()
+        user = auth.authenticate_user(form.get("username", ""), form.get("password", ""))
+        if not user:
+            return self.redirect("/login?message=Invalid%20username%20or%20password.")
+        next_path = form.get("next") or "/"
+        if not next_path.startswith("/") or next_path.startswith("//"):
+            next_path = "/"
+        self.redirect_with_cookie(next_path, token=auth.create_session(user["id"]))
+
+    def handle_upload(self, user: sqlite3.Row) -> None:
+        length = int(self.headers.get("Content-Length", "0"))
+        if length <= 0 or length > MAX_UPLOAD_BYTES:
+            return self.send_error(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "Upload must be under 100 MB.")
+        try:
+            filename, content = parse_multipart(self.rfile.read(length), self.headers.get("Content-Type", ""))["apkg"]
+            deck_name, cards = parse_apkg(content, filename)
+            deck_id = decks.save_import(user["id"], filename, deck_name, cards)
+        except KeyError:
+            return self.send_error(HTTPStatus.BAD_REQUEST, "No .apkg file was uploaded.")
+        except (ValueError, sqlite3.DatabaseError, zipfile.BadZipFile) as error:
+            return self.send_error(HTTPStatus.BAD_REQUEST, str(error))
+        self.redirect(f"/deck/{deck_id}")
+
+    def handle_progress(self, user: sqlite3.Row) -> None:
+        try:
+            payload = json.loads(self.rfile.read(int(self.headers.get("Content-Length", "0"))))
+            card_id = int(payload["card_id"])
+            result = "correct" if payload.get("result") == "correct" else "wrong"
+        except (ValueError, KeyError, json.JSONDecodeError):
+            return self.send_json({"ok": False}, HTTPStatus.BAD_REQUEST)
+        decks.record_progress(user["id"], card_id, result)
+        self.send_json({"ok": True})
+
+    def serve_static(self, request_path: str) -> None:
+        safe_name = posixpath.normpath(unquote(request_path)).removeprefix("/static/")
+        file_path = STATIC_DIR / safe_name
+        if not file_path.is_file() or STATIC_DIR not in file_path.resolve().parents:
+            return self.send_error(HTTPStatus.NOT_FOUND)
+        content_type = "text/css" if file_path.suffix == ".css" else "application/javascript"
+        body = file_path.read_bytes()
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", f"{content_type}; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)

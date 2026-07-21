@@ -26,3 +26,20 @@ FLASHCARDS_HOST=127.0.0.1 FLASHCARDS_PORT=8000 python3 app.py
 - front/back study mode with progress tracking
 
 This first pass uses the first Anki note field as the front of each card and the remaining fields as the back.
+
+## Project Structure
+
+```text
+app.py                    # stable development entry point
+flashcards/
+  application.py         # application composition and server startup
+  config.py              # environment settings and filesystem paths
+  database.py            # SQLite connection and schema lifecycle
+  auth.py                # users, passwords, and sessions
+  decks.py               # deck and study-progress persistence
+  importer.py            # Anki package parsing and HTML sanitization
+  views.py               # HTML rendering
+  web.py                 # HTTP routing and request/response handling
+static/                   # browser-side CSS and JavaScript
+data/                     # local SQLite database
+```
