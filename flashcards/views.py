@@ -89,8 +89,8 @@ def render_pdf_import(user: sqlite3.Row) -> bytes:
 <form id="pdfUploadForm" class="upload-panel">
 <label for="pdfFile">PDF document</label><input id="pdfFile" name="pdf" type="file" accept=".pdf,application/pdf" required>
 <fieldset><legend>Import mode</legend>
-<label><input type="radio" name="mode" value="extract" checked> Extract existing questions (no LLM)</label>
-<label><input type="radio" name="mode" value="generate"> Generate new flashcards with Ollama</label></fieldset>
+<label><input type="radio" name="mode" value="extract" checked> Extract existing questions (no AI)</label>
+<label><input type="radio" name="mode" value="generate"> Generate new flashcards with Ollama (AI)</label></fieldset>
 <button id="startPdfImport" type="submit">Process PDF</button></form>
 <section id="pdfStatus" class="processing-panel" hidden aria-live="polite"><div class="status-row">
 <strong id="pdfStatusLabel">Uploading</strong><span id="pdfProgressText">0%</span></div>

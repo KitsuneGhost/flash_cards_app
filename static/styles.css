@@ -184,7 +184,7 @@ button.secondary:hover {
   color: var(--accent-dark);
 }
 
-input:not([type="file"]) {
+input:not([type="file"]):not([type="radio"]):not([type="checkbox"]) {
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -268,6 +268,28 @@ input:not([type="file"]) {
   gap: 10px;
   margin: 0;
   padding: 14px;
+}
+
+.upload-panel fieldset label {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  gap: 9px;
+  line-height: 1.35;
+  padding: 3px 0;
+}
+
+.upload-panel input[type="radio"] {
+  accent-color: var(--accent);
+  flex: 0 0 auto;
+  height: 17px;
+  margin: 0;
+  width: 17px;
+}
+
+.upload-panel input[type="radio"]:focus-visible {
+  outline: 3px solid rgba(23, 109, 99, 0.24);
+  outline-offset: 2px;
 }
 
 .upload-panel legend,
