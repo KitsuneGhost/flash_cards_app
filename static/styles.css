@@ -445,6 +445,16 @@ textarea {
   margin: 0 0 4px;
 }
 
+.deck-actions {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+}
+
+.deck-actions form {
+  margin: 0;
+}
+
 .empty {
   color: var(--muted);
   padding: 28px 0;
@@ -636,6 +646,11 @@ code {
 
   .deck-card,
   .study-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .deck-actions {
     align-items: stretch;
     flex-direction: column;
   }

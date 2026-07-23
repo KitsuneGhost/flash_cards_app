@@ -218,6 +218,9 @@ class Handler(BaseHTTPRequestHandler):
         elif match := re.fullmatch(r"/api/decks/(\d+)/exam-submit", path):
             if user := self.require_user():
                 self.handle_exam_submit(user, int(match.group(1)))
+        elif match := re.fullmatch(r"/decks/(\d+)/delete", path):
+            if user := self.require_user():
+                self.handle_deck_delete(user, int(match.group(1)))
         elif path == "/api/pdf-imports":
             if user := self.require_user():
                 self.handle_pdf_create(user)
@@ -298,6 +301,11 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json({"ok": False}, HTTPStatus.BAD_REQUEST)
         decks.record_progress(user["id"], card_id, result)
         self.send_json({"ok": True})
+
+    def handle_deck_delete(self, user: sqlite3.Row, deck_id: int) -> None:
+        if not decks.delete_deck(user["id"], deck_id):
+            return self.redirect("/?message=Deck%20not%20found.")
+        self.redirect("/?message=Deck%20deleted.")
 
     def handle_exam_submit(self, user: sqlite3.Row, deck_id: int) -> None:
         try:

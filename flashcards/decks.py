@@ -50,6 +50,13 @@ def list_decks(user_id: int) -> list[sqlite3.Row]:
         ).fetchall()
 
 
+def delete_deck(user_id: int, deck_id: int) -> bool:
+    """Delete an owned deck and its cards."""
+    with connect() as connection:
+        cursor = connection.execute("DELETE FROM decks WHERE id = ? AND user_id = ?", (deck_id, user_id))
+    return cursor.rowcount > 0
+
+
 def get_deck_for_study(user_id: int, deck_id: int) -> tuple[sqlite3.Row, list[sqlite3.Row]]:
     with connect() as connection:
         deck = connection.execute(

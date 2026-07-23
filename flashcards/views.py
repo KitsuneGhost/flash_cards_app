@@ -55,7 +55,7 @@ def render_dashboard(user: sqlite3.Row, decks: list[sqlite3.Row], message: str =
         if deck["total_seen"]:
             accuracy = f"{round((deck['total_correct'] / deck['total_seen']) * 100)}% correct"
         items.append(f"""<article class="deck-card"><div><h2>{html.escape(deck["name"])}</h2>
-<p>{deck["card_count"]} {"questions" if deck["kind"] == "mock_exam" else "cards"} · {accuracy}</p></div><a class="button" href="/deck/{deck["id"]}">{"Take test" if deck["kind"] == "mock_exam" else "Study"}</a></article>""")
+<p>{deck["card_count"]} {"questions" if deck["kind"] == "mock_exam" else "cards"} · {accuracy}</p></div><div class="deck-actions"><a class="button" href="/deck/{deck["id"]}">{"Take test" if deck["kind"] == "mock_exam" else "Study"}</a><form action="/decks/{deck["id"]}/delete" method="post" onsubmit="return confirm('Delete this deck and all of its cards? This cannot be undone.');"><button class="secondary" type="submit">Delete</button></form></div></article>""")
     empty = "" if items else '<p class="empty">Import an Anki package to start studying.</p>'
     notice = f'<div class="notice">{html.escape(message)}</div>' if message else ""
     body = f"""<section class="dashboard"><div class="intro"><h1>Your decks</h1>
