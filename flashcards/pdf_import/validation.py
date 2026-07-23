@@ -13,7 +13,6 @@ from .evidence import answer_support_quality, evidence_match_quality
 from .models import DocumentChunk, DraftFlashcard
 from .normalization import normalize_for_matching
 
-
 TRIVIAL_METADATA_QUESTION = re.compile(
     r"\b(?:who (?:is|was) (?:the )?(?:professor|presenter|speaker|lecturer)|"
     r"what (?:is|was) (?:the )?(?:professor|presenter|speaker|lecturer)(?:'s)? name|"

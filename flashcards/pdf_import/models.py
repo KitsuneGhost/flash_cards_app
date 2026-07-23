@@ -64,3 +64,4 @@ class DraftFlashcard:
     requires_input: bool = False
     evidence_match_quality: float = 0.0
     validation_warnings: list[str] = field(default_factory=list)
+    options: list[str] = field(default_factory=list)

@@ -190,7 +190,11 @@ class Handler(BaseHTTPRequestHandler):
                 if user := self.require_user():
                     deck_id = int(parsed.path.removeprefix("/deck/").strip("/"))
                     deck, cards = decks.get_deck_for_study(user["id"], deck_id)
-                    self.send_html(views.render_study(user, deck, cards))
+                    self.send_html(
+                        views.render_exam(user, deck, cards)
+                        if deck["kind"] == "mock_exam"
+                        else views.render_study(user, deck, cards)
+                    )
             else:
                 self.send_error(HTTPStatus.NOT_FOUND)
         except (LookupError, ValueError):
@@ -211,6 +215,9 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/progress":
             if user := self.require_user():
                 self.handle_progress(user)
+        elif match := re.fullmatch(r"/api/decks/(\d+)/exam-submit", path):
+            if user := self.require_user():
+                self.handle_exam_submit(user, int(match.group(1)))
         elif path == "/api/pdf-imports":
             if user := self.require_user():
                 self.handle_pdf_create(user)
@@ -292,6 +299,22 @@ class Handler(BaseHTTPRequestHandler):
         decks.record_progress(user["id"], card_id, result)
         self.send_json({"ok": True})
 
+    def handle_exam_submit(self, user: sqlite3.Row, deck_id: int) -> None:
+        try:
+            payload = self.read_json()
+            raw_answers = payload.get("answers", {})
+            if not isinstance(raw_answers, dict):
+                raise ValueError("Answers must be an object.")
+            answers = {int(card_id): int(option_index) for card_id, option_index in raw_answers.items()}
+            results = decks.grade_exam(user["id"], deck_id, answers)
+        except (LookupError, ValueError, TypeError):
+            return self.send_json({"ok": False, "error": "Invalid exam submission."}, HTTPStatus.BAD_REQUEST)
+        for result in results:
+            decks.record_progress(user["id"], result["card_id"], "correct" if result["correct"] else "wrong")
+        self.send_json(
+            {"ok": True, "score": sum(result["correct"] for result in results), "results": results}
+        )
+
     def handle_pdf_create(self, user: sqlite3.Row) -> None:
         length = int(self.headers.get("Content-Length", "0"))
         if length <= 0 or length > PDF_MAX_SIZE_BYTES + 1024 * 1024:
@@ -306,16 +329,18 @@ class Handler(BaseHTTPRequestHandler):
             fields, files = parse_multipart_form(
                 self.rfile.read(length), self.headers.get("Content-Type", "")
             )
-            mode = fields.get("mode", "")
-            if mode not in {"extract", "generate"}:
+            requested_mode = fields.get("mode", "")
+            if requested_mode not in {"extract", "generate", "mock_exam"}:
                 raise UploadValidationError("Choose a valid PDF import mode.")
+            mode = "extract" if requested_mode == "mock_exam" else requested_mode
+            kind = "mock_exam" if requested_mode == "mock_exam" else "flashcards"
             filename, content_type, content = files["pdf"]
             validate_pdf_upload(content, filename, content_type, PDF_MAX_SIZE_BYTES)
             if not self.pdf_manager:
                 raise RuntimeError("PDF processing is not configured.")
             path = create_temporary_pdf(content)
             try:
-                job_id = pdf_repository.create_job(user["id"], filename, mode)
+                job_id = pdf_repository.create_job(user["id"], filename, mode, kind)
                 self.pdf_manager.submit(job_id, user["id"], mode, path)
             except Exception:
                 path.unlink(missing_ok=True)

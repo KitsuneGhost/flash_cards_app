@@ -103,9 +103,10 @@ cancelButton.addEventListener("click", async () => {
 async function loadDrafts() {
   const { job, drafts } = await api(`/api/pdf-imports/${currentJobId}/drafts`);
   review.hidden = false;
+  review.dataset.kind = job.kind;
   draftList.replaceChildren();
   warningList.replaceChildren();
-  deckName.value = job.document_title || "PDF flashcards";
+  deckName.value = job.document_title || (job.kind === "mock_exam" ? "PDF mock exam" : "PDF flashcards");
   for (const warning of job.warnings) {
     const notice = document.createElement("p");
     notice.className = "notice warning";
@@ -157,6 +158,21 @@ function renderDraft(draft) {
   answer.rows = 3;
   answer.placeholder = draft.requires_input ? "Answer required before saving" : "Answer";
 
+  const choices = document.createElement("div");
+  choices.className = "draft-choices";
+  if (jobKind() === "mock_exam") {
+    const heading = document.createElement("strong");
+    heading.textContent = "Answer choices from the PDF";
+    choices.append(heading);
+    const list = document.createElement("ol");
+    (JSON.parse(draft.options_json || "[]")).forEach((option) => {
+      const item = document.createElement("li");
+      item.textContent = option;
+      list.append(item);
+    });
+    choices.append(list);
+  }
+
   const source = document.createElement("div");
   source.className = "draft-source";
   const sourceMeta = document.createElement("strong");
@@ -183,8 +199,12 @@ function renderDraft(draft) {
     }
   });
 
-  card.append(top, labeledField("Question", question), labeledField("Answer", answer), source, remove);
+  card.append(top, labeledField("Question", question), labeledField("Correct answer", answer), choices, source, remove);
   draftList.append(card);
+}
+
+function jobKind() {
+  return review.dataset.kind || "flashcards";
 }
 
 async function updateDraft(draftId, values) {

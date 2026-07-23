@@ -13,17 +13,19 @@ from .models import DraftFlashcard
 ACTIVE_STATUSES = ("uploaded", "parsing", "chunking", "generating", "validating")
 
 
-def create_job(user_id: int, filename: str, mode: str) -> str:
+def create_job(user_id: int, filename: str, mode: str, kind: str = "flashcards") -> str:
     if mode not in {"extract", "generate"}:
         raise ValueError("Mode must be 'extract' or 'generate'.")
+    if kind not in {"flashcards", "mock_exam"}:
+        raise ValueError("Invalid PDF output type.")
     job_id = uuid.uuid4().hex
     timestamp = now_iso()
     with connect() as connection:
         connection.execute(
             """INSERT INTO pdf_import_jobs
-               (id, user_id, original_filename, mode, status, created_at, updated_at)
-               VALUES (?, ?, ?, ?, 'uploaded', ?, ?)""",
-            (job_id, user_id, filename, mode, timestamp, timestamp),
+               (id, user_id, original_filename, mode, kind, status, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, 'uploaded', ?, ?)""",
+            (job_id, user_id, filename, mode, kind, timestamp, timestamp),
         )
     return job_id
 
@@ -92,15 +94,16 @@ def save_drafts(job_id: str, user_id: int, cards: list[DraftFlashcard]) -> None:
         connection.execute("DELETE FROM generated_flashcard_drafts WHERE job_id = ?", (job_id,))
         connection.executemany(
             """INSERT INTO generated_flashcard_drafts
-               (job_id, user_id, question, answer, evidence, page_number, section_title,
+               (job_id, user_id, question, answer, options_json, evidence, page_number, section_title,
                 chunk_id, confidence, requires_input, accepted, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)""",
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)""",
             [
                 (
                     job_id,
                     user_id,
                     card.question,
                     card.answer,
+                    json.dumps(card.options),
                     card.evidence,
                     card.page_number,
                     card.section_title,
@@ -179,18 +182,31 @@ def approve_drafts(user_id: int, job_id: str, deck_name: str) -> int:
             raise ValueError("Select at least one draft card to save.")
         if any(not draft["question"].strip() or not draft["answer"].strip() for draft in drafts):
             raise ValueError("Every selected card must have both a question and an answer.")
+        if job["kind"] == "mock_exam":
+            invalid = []
+            for draft in drafts:
+                try:
+                    options = json.loads(draft["options_json"] or "[]")
+                except json.JSONDecodeError:
+                    options = []
+                if not isinstance(options, list) or len(options) < 2 or draft["answer"] not in options:
+                    invalid.append(draft)
+            if invalid:
+                raise ValueError(
+                    "Each selected exam question must have at least two choices and a correct answer matching a choice."
+                )
         timestamp = now_iso()
         cursor = connection.execute(
-            """INSERT INTO decks (user_id, name, source_filename, card_count, created_at)
-               VALUES (?, ?, ?, ?, ?)""",
-            (user_id, deck_name, job["original_filename"], len(drafts), timestamp),
+            """INSERT INTO decks (user_id, name, source_filename, card_count, kind, created_at)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (user_id, deck_name, job["original_filename"], len(drafts), job["kind"], timestamp),
         )
         deck_id = int(cursor.lastrowid)
         connection.executemany(
             """INSERT INTO cards
                (deck_id, front, back, position, updated_at, evidence, source_page,
-                source_section, source_document, generation_mode)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                source_section, source_document, generation_mode, options_json)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             [
                 (
                     deck_id,
@@ -203,6 +219,7 @@ def approve_drafts(user_id: int, job_id: str, deck_name: str) -> int:
                     draft["section_title"],
                     job["document_title"],
                     job["mode"],
+                    draft["options_json"],
                 )
                 for index, draft in enumerate(drafts)
             ],

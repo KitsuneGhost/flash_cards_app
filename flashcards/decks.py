@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from typing import Any
 
@@ -57,7 +58,7 @@ def get_deck_for_study(user_id: int, deck_id: int) -> tuple[sqlite3.Row, list[sq
         if not deck:
             raise LookupError("Deck not found")
         cards = connection.execute(
-            """SELECT id, front, back, seen_count, correct_count, wrong_count
+            """SELECT id, front, back, options_json, seen_count, correct_count, wrong_count
                FROM cards WHERE deck_id = ? ORDER BY position, id""",
             (deck_id,),
         ).fetchall()
@@ -74,3 +75,40 @@ def record_progress(user_id: int, card_id: int, result: str) -> None:
                        (SELECT id FROM decks WHERE user_id = ?)""",
             (result, now_iso(), card_id, user_id),
         )
+
+
+def grade_exam(user_id: int, deck_id: int, answers: dict[int, int]) -> list[dict[str, Any]]:
+    """Grade a mock exam without exposing its answers before submission."""
+    with connect() as connection:
+        deck = connection.execute(
+            "SELECT kind FROM decks WHERE id = ? AND user_id = ?", (deck_id, user_id)
+        ).fetchone()
+        if not deck or deck["kind"] != "mock_exam":
+            raise LookupError("Exam not found")
+        cards = connection.execute(
+            "SELECT id, front, back, options_json FROM cards WHERE deck_id = ? ORDER BY position, id",
+            (deck_id,),
+        ).fetchall()
+
+    results = []
+    for card in cards:
+        try:
+            options = json.loads(card["options_json"] or "[]")
+        except json.JSONDecodeError:
+            options = []
+        selected_index = answers.get(card["id"])
+        selected = (
+            options[selected_index]
+            if isinstance(selected_index, int) and 0 <= selected_index < len(options)
+            else None
+        )
+        results.append(
+            {
+                "card_id": card["id"],
+                "question": card["front"],
+                "selected": selected,
+                "correct_answer": card["back"],
+                "correct": selected == card["back"],
+            }
+        )
+    return results

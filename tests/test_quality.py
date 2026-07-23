@@ -82,8 +82,14 @@ def test_unsupported_answer_is_rejected():
 )
 def test_trivial_or_vague_cards_are_rejected(question, answer):
     payload = parse_model_output(
-        '{"cards":[{"question":' + json.dumps(question) + ',"answer":' + json.dumps(answer)
-        + ',"evidence":' + json.dumps(SOURCE) + '}]}')
+        '{"cards":[{"question":'
+        + json.dumps(question)
+        + ',"answer":'
+        + json.dumps(answer)
+        + ',"evidence":'
+        + json.dumps(SOURCE)
+        + "}]}"
+    )
     assert validate_generated_card(payload[0], CHUNK) is None
 
 

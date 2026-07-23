@@ -44,6 +44,7 @@ def init_db() -> None:
                 name TEXT NOT NULL,
                 source_filename TEXT NOT NULL,
                 card_count INTEGER NOT NULL DEFAULT 0,
+                kind TEXT NOT NULL DEFAULT 'flashcards',
                 created_at TEXT NOT NULL
             );
 
@@ -67,6 +68,7 @@ def init_db() -> None:
                 user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
                 original_filename TEXT NOT NULL,
                 mode TEXT NOT NULL CHECK (mode IN ('extract', 'generate')),
+                kind TEXT NOT NULL DEFAULT 'flashcards',
                 status TEXT NOT NULL,
                 document_title TEXT,
                 progress INTEGER NOT NULL DEFAULT 0,
@@ -86,6 +88,7 @@ def init_db() -> None:
                 user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
                 question TEXT NOT NULL,
                 answer TEXT NOT NULL DEFAULT '',
+                options_json TEXT NOT NULL DEFAULT '[]',
                 evidence TEXT NOT NULL DEFAULT '',
                 page_number INTEGER,
                 section_title TEXT NOT NULL DEFAULT '',
@@ -106,6 +109,20 @@ def init_db() -> None:
             connection.execute(
                 "ALTER TABLE decks ADD COLUMN user_id INTEGER REFERENCES users(id) ON DELETE CASCADE"
             )
+        if "kind" not in columns:
+            connection.execute("ALTER TABLE decks ADD COLUMN kind TEXT NOT NULL DEFAULT 'flashcards'")
+        job_columns = {row["name"] for row in connection.execute("PRAGMA table_info(pdf_import_jobs)")}
+        if "kind" not in job_columns:
+            connection.execute(
+                "ALTER TABLE pdf_import_jobs ADD COLUMN kind TEXT NOT NULL DEFAULT 'flashcards'"
+            )
+        draft_columns = {
+            row["name"] for row in connection.execute("PRAGMA table_info(generated_flashcard_drafts)")
+        }
+        if "options_json" not in draft_columns:
+            connection.execute(
+                "ALTER TABLE generated_flashcard_drafts ADD COLUMN options_json TEXT NOT NULL DEFAULT '[]'"
+            )
         card_columns = {row["name"] for row in connection.execute("PRAGMA table_info(cards)")}
         additions = {
             "evidence": "TEXT",
@@ -113,6 +130,7 @@ def init_db() -> None:
             "source_section": "TEXT",
             "source_document": "TEXT",
             "generation_mode": "TEXT",
+            "options_json": "TEXT",
         }
         for name, column_type in additions.items():
             if name not in card_columns:

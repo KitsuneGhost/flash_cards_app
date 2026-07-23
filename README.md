@@ -101,10 +101,13 @@ python app.py
 ```
 
 Open http://127.0.0.1:8000/register. After login, choose **Create cards from a PDF** on the deck dashboard.
+For a previous multiple-choice exam, choose **Create a mock multiple-choice exam from the PDF**. The importer
+keeps the question and its A–H choices, resolves an explicit answer key where present, and lets you review it
+before saving. Saved mock exams show one question at a time and score the submission.
 
 The PDF workflow is:
 
-1. Upload a PDF and choose deterministic extraction or Ollama generation.
+1. Upload a PDF and choose deterministic extraction, mock exam extraction, or Ollama generation.
 2. Poll the SQLite-backed job while Docling parses and the backend processes chunks.
 3. Review and edit every draft with its evidence, page, section, and confidence indicator.
 4. Select only wanted cards and save them into a new deck.

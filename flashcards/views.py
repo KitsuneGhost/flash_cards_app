@@ -7,6 +7,11 @@ import json
 import sqlite3
 
 
+def _script_json(value: object) -> str:
+    """Serialize data safely for an inline script element."""
+    return json.dumps(value).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+
+
 def render_page(title: str, body: str, user: sqlite3.Row | None = None) -> bytes:
     nav = (
         (
@@ -50,7 +55,7 @@ def render_dashboard(user: sqlite3.Row, decks: list[sqlite3.Row], message: str =
         if deck["total_seen"]:
             accuracy = f"{round((deck['total_correct'] / deck['total_seen']) * 100)}% correct"
         items.append(f"""<article class="deck-card"><div><h2>{html.escape(deck["name"])}</h2>
-<p>{deck["card_count"]} cards · {accuracy}</p></div><a class="button" href="/deck/{deck["id"]}">Study</a></article>""")
+<p>{deck["card_count"]} {"questions" if deck["kind"] == "mock_exam" else "cards"} · {accuracy}</p></div><a class="button" href="/deck/{deck["id"]}">{"Take test" if deck["kind"] == "mock_exam" else "Study"}</a></article>""")
     empty = "" if items else '<p class="empty">Import an Anki package to start studying.</p>'
     notice = f'<div class="notice">{html.escape(message)}</div>' if message else ""
     body = f"""<section class="dashboard"><div class="intro"><h1>Your decks</h1>
@@ -67,7 +72,7 @@ def render_dashboard(user: sqlite3.Row, decks: list[sqlite3.Row], message: str =
 
 
 def render_study(user: sqlite3.Row, deck: sqlite3.Row, cards: list[sqlite3.Row]) -> bytes:
-    payload = json.dumps([dict(card) for card in cards])
+    payload = _script_json([dict(card) for card in cards])
     body = f"""<section class="study-shell"><div class="study-head"><div>
 <a class="back-link" href="/">Back to decks</a><h1>{html.escape(deck["name"])}</h1></div>
 <div class="counter"><span id="cardNumber">1</span> / {len(cards)}</div></div>
@@ -81,6 +86,29 @@ def render_study(user: sqlite3.Row, deck: sqlite3.Row, cards: list[sqlite3.Row])
     return render_page(str(deck["name"]), body, user)
 
 
+def render_exam(user: sqlite3.Row, deck: sqlite3.Row, cards: list[sqlite3.Row]) -> bytes:
+    payload = _script_json(
+        {
+            "deck_id": deck["id"],
+            "questions": [
+                {"id": card["id"], "front": card["front"], "options_json": card["options_json"]}
+                for card in cards
+            ],
+        }
+    )
+    body = f"""<section class="exam-shell"><div class="study-head"><div>
+<a class="back-link" href="/">Back to decks</a><h1>{html.escape(deck["name"])}</h1>
+<p class="exam-note">Choose an answer for every question, then submit to see your score.</p></div>
+<div class="counter"><span id="examNumber">1</span> / {len(cards)}</div></div>
+<div class="progress"><div id="examProgressBar"></div></div>
+<form id="examForm" class="exam-card"><div id="examQuestion"></div><div id="examChoices" class="exam-choices"></div>
+<div class="exam-actions"><button id="previousQuestion" class="secondary" type="button">Previous</button>
+<button id="nextQuestion" type="button">Next</button><button id="submitExam" type="submit">Submit test</button></div></form>
+<section id="examResults" class="exam-results" hidden></section></section>
+<script>window.MOCK_EXAM = {payload};</script><script src="/static/exam.js"></script>"""
+    return render_page(str(deck["name"]), body, user)
+
+
 def render_pdf_import(user: sqlite3.Row) -> bytes:
     body = """<section class="pdf-import-shell">
 <div class="intro"><a class="back-link" href="/">Back to decks</a><h1>Create cards from a PDF</h1>
@@ -90,6 +118,7 @@ def render_pdf_import(user: sqlite3.Row) -> bytes:
 <label for="pdfFile">PDF document</label><input id="pdfFile" name="pdf" type="file" accept=".pdf,application/pdf" required>
 <fieldset><legend>Import mode</legend>
 <label><input type="radio" name="mode" value="extract" checked> Extract existing questions (no AI)</label>
+<label><input type="radio" name="mode" value="mock_exam"> Create a mock multiple-choice exam from the PDF (no AI)</label>
 <label><input type="radio" name="mode" value="generate"> Generate new flashcards with Ollama (AI)</label></fieldset>
 <button id="startPdfImport" type="submit">Process PDF</button></form>
 <section id="pdfStatus" class="processing-panel" hidden aria-live="polite"><div class="status-row">

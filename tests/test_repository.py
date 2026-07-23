@@ -52,3 +52,20 @@ def test_blank_accepted_answer_blocks_approval(isolated_database):
     repository.update_job(job_id, status="completed")
     with pytest.raises(ValueError, match="question and an answer"):
         repository.approve_drafts(user_id, job_id, "Questions")
+
+
+def test_mock_exam_requires_answer_to_match_one_of_its_choices(isolated_database):
+    user_id = make_user("exam_user")
+    job_id = repository.create_job(user_id, "exam.pdf", "extract", "mock_exam")
+    repository.save_drafts(
+        job_id,
+        user_id,
+        [
+            DraftFlashcard(
+                "Which answer?", "Edited answer", "Evidence", 1, "", "c", 0.8, options=["One", "Two"]
+            )
+        ],
+    )
+    repository.update_job(job_id, status="completed")
+    with pytest.raises(ValueError, match="matching a choice"):
+        repository.approve_drafts(user_id, job_id, "Exam")
