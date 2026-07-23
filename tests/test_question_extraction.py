@@ -47,16 +47,36 @@ def test_extracts_wrapped_numbered_question_with_choices():
 def test_parser_adds_answer_key_for_highlighted_option():
     text = "a. First option\nb. Correct option"
     marked = DoclingPdfParser._mark_highlighted_answers(text, {"correct option"})
-    assert "b. Correct option\nAnswer: Correct option" in marked
+    assert "b. Correct option\nAnswer: B" in marked
 
 
 def test_highlighted_answer_key_is_added_after_all_choices():
     text = "a. First option\nb. Correct option\nc. Third option\nd. Fourth option"
     marked = DoclingPdfParser._mark_highlighted_answers(text, {"correct option"})
-    assert marked.endswith("d. Fourth option\nAnswer: Correct option")
+    assert marked.endswith("d. Fourth option\nAnswer: B")
     card = extract_questions(chunk(f"1. Which is correct?\n{marked}"))[0]
     assert card.options == ["First option", "Correct option", "Third option", "Fourth option"]
     assert card.answer == "Correct option"
+
+
+def test_preserves_wrapped_options_without_creating_spurious_questions():
+    text = (
+        "14. Which statement is correct?\n"
+        "a. A long first choice that wraps onto\n"
+        "the following line\n"
+        "b. Correct choice\n"
+        "Answer: B\n"
+        "15. Which is next?\n"
+        "a. First\n"
+        "b. Second\n"
+        "Answer: A"
+    )
+
+    cards = extract_questions(chunk(text))
+
+    assert [card.question for card in cards] == ["Which statement is correct?", "Which is next?"]
+    assert cards[0].options == ["A long first choice that wraps onto the following line", "Correct choice"]
+    assert cards[0].answer == "Correct choice"
 
 
 def test_does_not_accept_arbitrary_question_mark_without_context():
@@ -105,3 +125,13 @@ def test_numbered_question_promoted_to_heading_is_extracted():
     cards = extract_questions(heading_chunk)
 
     assert [card.question for card in cards] == ["Why does checkpoint loss increase genomic instability?"]
+
+
+def test_extracts_all_numbered_questions_from_a_single_large_chunk():
+    text = "\n".join(
+        f"{number}. Question {number}?\nA. First\nB. Second\nAnswer: B" for number in range(1, 14)
+    )
+
+    cards = extract_questions(chunk(text))
+
+    assert [card.question for card in cards] == [f"Question {number}?" for number in range(1, 14)]

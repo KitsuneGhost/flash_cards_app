@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from . import repository
-from .chunking import chunk_document
+from .chunking import chunk_document, extraction_chunks
 from .confidence import calculate_confidence
 from .duplicates import remove_duplicates
 from .generation import generate_cards
@@ -48,11 +48,17 @@ class PdfImportManager:
         warnings: list[str] = []
         try:
             repository.update_job(job_id, status="parsing", progress=10)
-            document = self.parser.parse(path)
+            # Existing-question extraction can use a PDF's native text layer directly.
+            # This avoids loading Docling/OCR for the common exam-PDF case.
+            document = self.parser.parse(path, prefer_native_questions=mode == "extract")
             self._cancel_if_requested(job_id)
             repository.update_job(job_id, status="chunking", progress=25, document_title=document.title)
-            chunks = chunk_document(document, self.target_words, self.overlap_words)
-            if len(chunks) > self.max_chunks:
+            chunks = (
+                extraction_chunks(document)
+                if mode == "extract"
+                else chunk_document(document, self.target_words, self.overlap_words)
+            )
+            if mode == "generate" and len(chunks) > self.max_chunks:
                 chunks = chunks[: self.max_chunks]
                 warnings.append(f"Only the first {self.max_chunks} chunks were processed.")
             repository.update_job(job_id, status="generating", progress=35, total_chunks=len(chunks))
@@ -74,7 +80,7 @@ class PdfImportManager:
                     warnings.append(f"Chunk {index + 1} failed: {error}")
                 progress = 35 + round(45 * (index + 1) / max(1, len(chunks)))
                 repository.update_job(job_id, progress=progress, processed_chunks=index + 1)
-                if len(cards) >= self.max_generated_cards:
+                if mode == "generate" and len(cards) >= self.max_generated_cards:
                     cards = cards[: self.max_generated_cards]
                     warnings.append(f"Stopped at the {self.max_generated_cards}-card document limit.")
                     break

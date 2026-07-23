@@ -46,8 +46,18 @@ function render() {
   submit.hidden = index !== questions.length - 1;
 }
 
-previous.addEventListener("click", () => { index -= 1; render(); });
-next.addEventListener("click", () => { index += 1; render(); });
+previous.addEventListener("click", () => {
+  index = Math.max(0, index - 1);
+  render();
+});
+next.addEventListener("click", () => {
+  if (index >= questions.length - 1) {
+    form.requestSubmit();
+    return;
+  }
+  index += 1;
+  render();
+});
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   submit.disabled = true;

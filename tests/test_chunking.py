@@ -1,4 +1,4 @@
-from flashcards.pdf_import.chunking import chunk_document
+from flashcards.pdf_import.chunking import chunk_document, extraction_chunks
 from flashcards.pdf_import.models import Document, DocumentBlock, Section, SourceLocation
 
 
@@ -34,3 +34,12 @@ def test_invalid_overlap_is_rejected():
         assert "overlap" in str(error)
     else:
         raise AssertionError("Expected invalid chunk settings to fail")
+
+
+def test_extraction_chunks_keep_a_large_page_intact():
+    document = document_with_blocks("one two three four", "five six seven eight")
+
+    chunks = extraction_chunks(document)
+
+    assert len(chunks) == 1
+    assert chunks[0].text == "one two three four\n\nfive six seven eight"

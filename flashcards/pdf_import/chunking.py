@@ -67,6 +67,22 @@ def chunk_document(document: Document, target_words: int, overlap_words: int) ->
     return chunks
 
 
+def extraction_chunks(document: Document) -> list[DocumentChunk]:
+    """Keep complete source sections together for deterministic extraction.
+
+    A page containing several multiple-choice questions must not be split at an
+    arbitrary word boundary: that can separate a question from its options or
+    answer key. Generation stays bounded through ``chunk_document``; extraction
+    prioritizes preserving the source layout.
+    """
+    chunks: list[DocumentChunk] = []
+    for section in document.sections:
+        if not section.blocks:
+            continue
+        _append_chunk(chunks, document, section, section.blocks, "")
+    return chunks
+
+
 def _append_chunk(
     chunks: list[DocumentChunk],
     document: Document,

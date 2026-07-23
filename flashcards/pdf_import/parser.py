@@ -11,8 +11,8 @@ from typing import Any
 from .models import Document, DocumentBlock, Section, SourceLocation
 from .normalization import normalize_document_text
 
-OPTION_LINE = re.compile(r"^\s*[A-H][.)]\s+(?P<text>.+)", re.I)
-QUESTION_LINE = re.compile(r"^(?:Q(?:uestion)?\s*[:.)-]\s*|\d{1,3}[.)]\s+).+\?$", re.I)
+OPTION_LINE = re.compile(r"^\s*(?P<label>[A-H])[.)]\s+(?P<text>.+)", re.I)
+QUESTION_START = re.compile(r"^(?:Q(?:uestion)?\s*[:.)-]\s*|\d{1,3}[.)]\s+).+", re.I)
 
 
 class PdfParsingError(RuntimeError):
@@ -25,7 +25,11 @@ class DoclingPdfParser:
         self.max_file_size = max_file_size
         self.enable_ocr = enable_ocr
 
-    def parse(self, path: Path) -> Document:
+    def parse(self, path: Path, prefer_native_questions: bool = False) -> Document:
+        if prefer_native_questions:
+            highlighted_options = self._highlighted_options(path)
+            if document := self._native_question_document(path, highlighted_options):
+                return document
         try:
             from docling.datamodel.base_models import InputFormat
             from docling.datamodel.pipeline_options import PdfPipelineOptions
@@ -146,31 +150,24 @@ class DoclingPdfParser:
 
     @staticmethod
     def _mark_highlighted_answers(text: str, highlighted_options: set[str]) -> str:
-        """Add an answer key after its complete highlighted choice group."""
+        """Add a letter answer key after the complete highlighted choice group."""
         if not highlighted_options:
             return text
         lines: list[str] = []
         pending_answer = ""
-        option_count = 0
-        source_lines = text.splitlines()
-        for index, line in enumerate(source_lines):
+        for line in text.splitlines():
+            # A new numbered question closes the preceding choice group. This
+            # intentionally allows a selected choice to wrap over several lines.
+            if pending_answer and QUESTION_START.match(line):
+                lines.append(f"Answer: {pending_answer}")
+                pending_answer = ""
             lines.append(line)
             match = OPTION_LINE.match(line)
             if match:
-                option_count += 1
                 if normalize_document_text(match.group("text")).casefold() in highlighted_options:
-                    pending_answer = match.group("text").strip()
-            if pending_answer and (
-                not match or index + 1 == len(source_lines) or not OPTION_LINE.match(source_lines[index + 1])
-            ):
-                # Do not put Answer: between B and C: the extraction code correctly
-                # sees a consecutive A–E block only when the key comes afterwards.
-                if option_count >= 2:
-                    lines.append(f"Answer: {pending_answer}")
-                pending_answer = ""
-                option_count = 0
-            elif not match:
-                option_count = 0
+                    pending_answer = match.group("label").upper()
+        if pending_answer:
+            lines.append(f"Answer: {pending_answer}")
         return "\n".join(lines)
 
     def _highlighted_options(self, path: Path) -> dict[int, set[str]]:
@@ -193,7 +190,7 @@ class DoclingPdfParser:
                 native_text = normalize_document_text(text_page.get_text_range())
                 native_lines = native_text.splitlines()
                 if sum(bool(OPTION_LINE.match(line)) for line in native_lines) < 2 or not any(
-                    QUESTION_LINE.match(line) for line in native_lines
+                    QUESTION_START.match(line) for line in native_lines
                 ):
                     text_page.close()
                     page.close()
@@ -232,7 +229,7 @@ class DoclingPdfParser:
                 page.close()
                 lines = text.splitlines()
                 if sum(bool(OPTION_LINE.match(line)) for line in lines) < 2 or not any(
-                    QUESTION_LINE.match(line) for line in lines
+                    QUESTION_START.match(line) for line in lines
                 ):
                     continue
                 page_number = page_index + 1
@@ -259,6 +256,61 @@ class DoclingPdfParser:
         except Exception:
             # Docling extraction remains available when a PDF has no native text layer.
             return
+
+    def _native_question_document(
+        self, path: Path, highlighted_options: dict[int, set[str]]
+    ) -> Document | None:
+        """Build a fast, page-based document when native text contains questions.
+
+        Exam PDFs commonly have a usable text layer. Reading it through PDFium is
+        dramatically faster than Docling with OCR and table analysis, and retaining
+        every qualifying page prevents a chunk cap from dropping early questions.
+        """
+        try:
+            import pypdfium2 as pdfium
+
+            pdf = pdfium.PdfDocument(path)
+            sections: list[Section] = []
+            for page_index in range(min(len(pdf), self.max_pages)):
+                page = pdf.get_page(page_index)
+                text_page = page.get_textpage()
+                text = normalize_document_text(text_page.get_text_range())
+                text_page.close()
+                page.close()
+                lines = text.splitlines()
+                if sum(bool(OPTION_LINE.match(line)) for line in lines) < 2 or not any(
+                    QUESTION_START.match(line) for line in lines
+                ):
+                    continue
+                page_number = page_index + 1
+                sections.append(
+                    Section(
+                        title=f"PDF page {page_number}",
+                        level=0,
+                        blocks=[
+                            DocumentBlock(
+                                text=self._mark_highlighted_answers(
+                                    text, highlighted_options.get(page_number, set())
+                                ),
+                                kind="list",
+                                location=SourceLocation(page_number, page_number),
+                            )
+                        ],
+                    )
+                )
+            page_count = len(pdf)
+            pdf.close()
+            if not sections:
+                return None
+            return Document(
+                identifier=hashlib.sha256(path.read_bytes()).hexdigest()[:24],
+                title=path.stem,
+                sections=sections,
+                page_count=page_count,
+                metadata={"source_name": path.name},
+            )
+        except Exception:
+            return None
 
     @staticmethod
     def _item_text(item: Any, document: Any) -> str:

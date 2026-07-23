@@ -55,10 +55,24 @@ def extract_questions(chunk: DocumentChunk) -> list[DraftFlashcard]:
 
         evidence_lines = lines[index:cursor]
         options: list[str] = []
-        while cursor < len(lines) and OPTION_LINE.match(lines[cursor]):
-            evidence_lines.append(lines[cursor])
-            options.append(OPTION_LINE.match(lines[cursor]).group("text").strip())
-            cursor += 1
+        while cursor < len(lines):
+            option_match = OPTION_LINE.match(lines[cursor])
+            if option_match:
+                evidence_lines.append(lines[cursor])
+                options.append(option_match.group("text").strip())
+                cursor += 1
+            elif (
+                options
+                and not ANSWER_PREFIX.match(lines[cursor])
+                and not QUESTION_PREFIX.match(lines[cursor])
+            ):
+                # A PDF choice may wrap across lines. Preserve it as a single
+                # choice instead of treating the continuation as another question.
+                evidence_lines.append(lines[cursor])
+                options[-1] = f"{options[-1]} {lines[cursor]}"
+                cursor += 1
+            else:
+                break
         answer, answer_lines, cursor = _consume_answer(lines, cursor)
         evidence_lines.extend(answer_lines)
         cards.append(_draft(chunk, question, _normalise_answer(answer, options), evidence_lines, options))
