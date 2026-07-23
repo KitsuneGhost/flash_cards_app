@@ -134,6 +134,7 @@ function renderDraft(draft) {
   const card = document.createElement("article");
   card.className = "draft-card";
   card.dataset.draftId = draft.id;
+  card.dataset.optionsJson = draft.options_json || "[]";
 
   const top = document.createElement("div");
   top.className = "draft-card-top";
@@ -153,6 +154,7 @@ function renderDraft(draft) {
   question.maxLength = 500;
   question.rows = 2;
   const answer = document.createElement("textarea");
+  answer.className = "draft-answer";
   answer.value = draft.answer;
   answer.maxLength = 1500;
   answer.rows = 3;
@@ -187,9 +189,15 @@ function renderDraft(draft) {
   remove.className = "secondary remove-draft";
   remove.textContent = "Reject and remove";
 
-  accepted.addEventListener("change", () => updateDraft(draft.id, { accepted: accepted.checked }));
+  accepted.addEventListener("change", () => {
+    updateCardValidation(card);
+    updateDraft(draft.id, { accepted: accepted.checked });
+  });
   question.addEventListener("change", () => updateDraft(draft.id, { question: question.value }));
   answer.addEventListener("change", () => updateDraft(draft.id, { answer: answer.value }));
+  answer.addEventListener("input", () => {
+    updateCardValidation(card);
+  });
   remove.addEventListener("click", async () => {
     try {
       await api(`/api/pdf-imports/${currentJobId}/drafts/${draft.id}`, { method: "DELETE" });
@@ -230,9 +238,80 @@ async function setAllDrafts(accepted) {
 document.querySelector("#selectAllDrafts").addEventListener("click", () => setAllDrafts(true));
 document.querySelector("#deselectAllDrafts").addEventListener("click", () => setAllDrafts(false));
 
+function updateCardValidation(card) {
+  const selected = card.querySelector(".draft-accepted");
+  const answer = card.querySelector(".draft-answer");
+  const issue = selected.checked && !answer.value.trim()
+    ? "missing"
+    : jobKind() === "mock_exam" && selected.checked && !JSON.parse(card.dataset.optionsJson).includes(answer.value.trim())
+      ? "mismatch"
+      : null;
+  card.classList.toggle("has-missing-answer", issue === "missing");
+  card.classList.toggle("has-invalid-answer", issue === "mismatch");
+  answer.toggleAttribute("aria-invalid", Boolean(issue));
+  return issue;
+}
+
+async function rejectUnansweredDrafts() {
+  const cards = [...draftList.querySelectorAll(".draft-card")].filter((card) => {
+    const selected = card.querySelector(".draft-accepted");
+    return selected.checked && !card.querySelector(".draft-answer").value.trim();
+  });
+  await Promise.all(cards.map((card) => {
+    card.querySelector(".draft-accepted").checked = false;
+    updateCardValidation(card);
+    return updateDraft(Number(card.dataset.draftId), { accepted: false });
+  }));
+  if (cards.length) {
+    showReviewError(`${cards.length} unanswered ${cards.length === 1 ? "card was" : "cards were"} rejected.`);
+  }
+}
+
+document.querySelector("#rejectMissingAnswers").addEventListener("click", rejectUnansweredDrafts);
+
+function showReviewError(message) {
+  let notice = warningList.querySelector(".review-error");
+  if (!notice) {
+    notice = document.createElement("p");
+    notice.className = "notice error review-error";
+    warningList.prepend(notice);
+  }
+  notice.textContent = message;
+}
+
 saveButton.addEventListener("click", async () => {
+  const issues = [...draftList.querySelectorAll(".draft-card")]
+    .map((card) => ({ card, issue: updateCardValidation(card) }))
+    .filter(({ issue }) => issue);
+  if (issues.length) {
+    const missing = issues.filter(({ issue }) => issue === "missing").length;
+    const mismatch = issues.length - missing;
+    const messages = [];
+    if (missing) messages.push(`${missing} ${missing === 1 ? "card is" : "cards are"} missing an answer`);
+    if (mismatch) messages.push(`${mismatch} ${mismatch === 1 ? "answer does" : "answers do"} not match a listed choice`);
+    showReviewError(
+      `${messages.join(" and ")}. Fix or deselect the highlighted cards before saving.`,
+    );
+    issues[0].card.scrollIntoView({ behavior: "smooth", block: "center" });
+    issues[0].card.querySelector(".draft-answer").focus();
+    return;
+  }
+  warningList.querySelector(".review-error")?.remove();
   saveButton.disabled = true;
   try {
+    // Persist visible edits first: a user may click Save while still focused in
+    // a textarea, before its regular change event has fired.
+    await Promise.all([...draftList.querySelectorAll(".draft-card")]
+      .filter((card) => card.querySelector(".draft-accepted").checked)
+      .map((card) => api(`/api/pdf-imports/${currentJobId}/drafts/${card.dataset.draftId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question: card.querySelector("textarea").value,
+          answer: card.querySelector(".draft-answer").value,
+          accepted: true,
+        }),
+      })));
     const payload = await api(`/api/pdf-imports/${currentJobId}/approve`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

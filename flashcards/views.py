@@ -128,6 +128,7 @@ def render_pdf_import(user: sqlite3.Row) -> bytes:
 <section id="draftReview" class="draft-review" hidden><div class="review-head"><div><h2>Review draft cards</h2>
 <p>Only selected cards with completed answers will be saved.</p></div><div class="review-actions">
 <button id="selectAllDrafts" type="button" class="secondary">Select all</button>
+<button id="rejectMissingAnswers" type="button" class="secondary">Reject unanswered</button>
 <button id="deselectAllDrafts" type="button" class="secondary">Deselect all</button></div></div>
 <div id="draftWarnings"></div><div id="draftList" class="draft-list"></div>
 <div class="save-panel"><label for="pdfDeckName">Deck name</label><input id="pdfDeckName" maxlength="200" required>
