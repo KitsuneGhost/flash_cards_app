@@ -218,6 +218,9 @@ class Handler(BaseHTTPRequestHandler):
         elif match := re.fullmatch(r"/api/decks/(\d+)/exam-submit", path):
             if user := self.require_user():
                 self.handle_exam_submit(user, int(match.group(1)))
+        elif match := re.fullmatch(r"/api/decks/(\d+)/exam-answer", path):
+            if user := self.require_user():
+                self.handle_exam_answer(user, int(match.group(1)))
         elif match := re.fullmatch(r"/decks/(\d+)/delete", path):
             if user := self.require_user():
                 self.handle_deck_delete(user, int(match.group(1)))
@@ -322,6 +325,17 @@ class Handler(BaseHTTPRequestHandler):
         self.send_json(
             {"ok": True, "score": sum(result["correct"] for result in results), "results": results}
         )
+
+    def handle_exam_answer(self, user: sqlite3.Row, deck_id: int) -> None:
+        try:
+            payload = self.read_json()
+            result = decks.grade_exam_answer(
+                user["id"], deck_id, int(payload["card_id"]), int(payload["option_index"])
+            )
+        except (LookupError, ValueError, KeyError, TypeError):
+            return self.send_json({"ok": False, "error": "Invalid exam answer."}, HTTPStatus.BAD_REQUEST)
+        decks.record_progress(user["id"], result["card_id"], "correct" if result["correct"] else "wrong")
+        self.send_json({"ok": True, "result": result})
 
     def handle_pdf_create(self, user: sqlite3.Row) -> None:
         length = int(self.headers.get("Content-Length", "0"))

@@ -107,7 +107,7 @@ def render_exam(user: sqlite3.Row, deck: sqlite3.Row, cards: list[sqlite3.Row]) 
 <p class="exam-note">Choose an answer for every question, then submit to see your score.</p></div>
 <div class="counter"><span id="examNumber">1</span> / {len(cards)}</div></div>
 <div class="progress"><div id="examProgressBar"></div></div>
-<form id="examForm" class="exam-card"><div id="examQuestion"></div><div id="examChoices" class="exam-choices"></div>
+<form id="examForm" class="exam-card"><div id="examQuestion"></div><div id="examChoices" class="exam-choices"></div><p id="examFeedback" class="exam-feedback" aria-live="polite"></p>
 <div class="exam-actions"><button id="previousQuestion" class="secondary" type="button">Previous</button>
 <button id="nextQuestion" type="button">Next</button><button id="submitExam" type="submit">Submit test</button></div></form>
 <section id="examResults" class="exam-results" hidden></section></section>

@@ -119,3 +119,30 @@ def grade_exam(user_id: int, deck_id: int, answers: dict[int, int]) -> list[dict
             }
         )
     return results
+
+
+def grade_exam_answer(user_id: int, deck_id: int, card_id: int, option_index: int) -> dict[str, Any]:
+    """Grade one answer while keeping every other answer private."""
+    with connect() as connection:
+        card = connection.execute(
+            """SELECT cards.id, cards.front, cards.back, cards.options_json
+               FROM cards JOIN decks ON decks.id = cards.deck_id
+               WHERE cards.id = ? AND cards.deck_id = ? AND decks.user_id = ? AND decks.kind = 'mock_exam'""",
+            (card_id, deck_id, user_id),
+        ).fetchone()
+    if not card:
+        raise LookupError("Exam question not found")
+    try:
+        options = json.loads(card["options_json"] or "[]")
+    except json.JSONDecodeError:
+        options = []
+    if not isinstance(option_index, int) or not 0 <= option_index < len(options):
+        raise ValueError("Invalid answer choice")
+    selected = options[option_index]
+    return {
+        "card_id": card["id"],
+        "question": card["front"],
+        "selected": selected,
+        "correct_answer": card["back"],
+        "correct": selected == card["back"],
+    }
