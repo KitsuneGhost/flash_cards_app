@@ -68,8 +68,9 @@ def render_dashboard(user: sqlite3.Row, decks: list[sqlite3.Row], message: str =
 <p>Import an Anki <code>.apkg</code> file, then study cards right in the browser.</p></div>{notice}
 <form class="upload-panel" action="/upload" method="post" enctype="multipart/form-data">
 <label for="apkg">Anki package</label><div class="upload-row">
-<input id="apkg" name="apkg" type="file" accept=".apkg,application/zip" required><button type="submit">Import</button>
-</div></form><section class="deck-grid">{"".join(items)}{empty}</section></section>"""
+<input id="apkg" name="apkg" type="file" required aria-describedby="apkgHint"><button type="submit">Import</button>
+</div><small id="apkgHint">Choose an Anki <code>.apkg</code> package.</small></form>
+<section class="deck-grid">{"".join(items)}{empty}</section></section>"""
     body = body.replace(
         '<section class="deck-grid">',
         '<a class="button pdf-import-link" href="/pdf-import">Create cards from a PDF</a><section class="deck-grid">',
@@ -88,7 +89,7 @@ def render_study(user: sqlite3.Row, deck: sqlite3.Row, cards: list[sqlite3.Row])
 <div class="actions"><button id="flipButton" type="button">Flip</button>
 <button id="wrongButton" type="button" class="secondary">Again</button>
 <button id="rightButton" type="button">Got it</button></div></section>
-<script>window.FLASHCARDS = {payload};</script><script src="/static/study.js"></script>"""
+<script>window.FLASHCARDS = {payload};</script><script src="/static/math.js"></script><script src="/static/study.js"></script>"""
     return render_page(str(deck["name"]), body, user)
 
 

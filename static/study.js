@@ -36,6 +36,7 @@ function renderCard() {
   const card = currentCard();
   sideLabel.textContent = showingBack ? "Back" : "Front";
   cardContent.innerHTML = showingBack ? card.back : card.front;
+  if (window.renderCardMath) window.renderCardMath(cardContent);
   cardNumber.textContent = String(index + 1);
   progressBar.style.width = `${((index + 1) / cards.length) * 100}%`;
   studyCard.classList.toggle("is-back", showingBack);

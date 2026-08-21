@@ -21,7 +21,9 @@ def validate_pdf_upload(content: bytes, filename: str, content_type: str, max_by
     if Path(filename).suffix.lower() != ".pdf":
         raise UploadValidationError("Only files with a .pdf extension are supported.")
     mime = content_type.split(";", 1)[0].strip().lower()
-    if mime not in {"application/pdf", "application/x-pdf"}:
+    # Safari and document-provider apps sometimes expose PDFs as generic binary
+    # files. The extension and magic bytes below still provide the validation.
+    if mime not in {"application/pdf", "application/x-pdf", "application/octet-stream", ""}:
         raise UploadValidationError("The uploaded file does not have a PDF content type.")
     if not content.lstrip().startswith(b"%PDF-"):
         raise UploadValidationError("The uploaded file does not have a valid PDF signature.")

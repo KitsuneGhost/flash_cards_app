@@ -592,6 +592,28 @@ textarea {
   padding-top: 18px;
 }
 
+.card-math {
+  font-family: Georgia, "Times New Roman", serif;
+  white-space: nowrap;
+}
+
+.card-math sup,
+.card-math sub {
+  font-size: 0.72em;
+  line-height: 0;
+}
+
+.display-math {
+  display: block;
+  margin: 12px 0;
+  text-align: center;
+  white-space: normal;
+}
+
+.math-roman {
+  font-style: normal;
+}
+
 .card-content img {
   display: none;
 }

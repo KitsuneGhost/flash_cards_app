@@ -12,7 +12,7 @@ from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qs, quote, unquote, urlparse
+from urllib.parse import parse_qs, quote, unquote, unquote_to_bytes, urlparse
 
 from . import auth, decks, views
 from .config import (
@@ -29,25 +29,45 @@ from .pdf_import.service import PdfImportManager
 from .pdf_import.upload import UploadValidationError, create_temporary_pdf, validate_pdf_upload
 
 
+def _disposition_parameter(disposition: str, parameter: str) -> str | None:
+    """Read a quoted or RFC 5987 encoded Content-Disposition parameter."""
+    encoded = re.search(rf"(?:^|;)\s*{re.escape(parameter)}\*=([^;]+)", disposition, re.IGNORECASE)
+    if encoded:
+        value = encoded.group(1).strip().strip('"')
+        charset, separator, encoded_value = value.partition("''")
+        if separator:
+            try:
+                return unquote_to_bytes(encoded_value).decode(charset or "utf-8")
+            except (LookupError, UnicodeDecodeError):
+                return unquote(encoded_value)
+        return unquote(value)
+    quoted = re.search(
+        rf'(?:^|;)\s*{re.escape(parameter)}="([^"]*)"', disposition, re.IGNORECASE
+    )
+    return quoted.group(1) if quoted else None
+
+
+def _safe_upload_name(filename: str) -> str:
+    return Path(filename.replace("\\", "/")).name
+
+
 def parse_multipart(body: bytes, content_type: str) -> dict[str, tuple[str, bytes]]:
     match = re.search(r"boundary=(?P<boundary>[^;]+)", content_type)
     if not match:
         raise ValueError("Missing multipart boundary.")
     delimiter = b"--" + match.group("boundary").strip('"').encode()
     files: dict[str, tuple[str, bytes]] = {}
-    for part in body.split(delimiter):
-        part = part.strip()
-        if not part or part == b"--":
-            continue
-        if part.endswith(b"--"):
-            part = part[:-2].strip()
+    for raw_part in body.split(delimiter)[1:]:
+        if raw_part.startswith(b"--"):
+            break
+        part = raw_part.removeprefix(b"\r\n").removesuffix(b"\r\n")
         header_blob, _, content = part.partition(b"\r\n\r\n")
         headers = header_blob.decode("utf-8", "replace").split("\r\n")
         disposition = next((h for h in headers if h.lower().startswith("content-disposition:")), "")
-        name_match = re.search(r'name="([^"]+)"', disposition)
-        filename_match = re.search(r'filename="([^"]*)"', disposition)
-        if name_match and filename_match:
-            files[name_match.group(1)] = (Path(filename_match.group(1)).name, content.removesuffix(b"\r\n"))
+        name = _disposition_parameter(disposition, "name")
+        filename = _disposition_parameter(disposition, "filename")
+        if name and filename is not None:
+            files[name] = (_safe_upload_name(filename), content)
     return files
 
 
@@ -70,12 +90,11 @@ def parse_multipart_form(
             continue
         headers = header_blob.decode("utf-8", "replace").split("\r\n")
         disposition = next((line for line in headers if line.lower().startswith("content-disposition:")), "")
-        name_match = re.search(r'name="([^"]+)"', disposition)
-        if not name_match:
+        name = _disposition_parameter(disposition, "name")
+        if not name:
             continue
-        name = name_match.group(1)
-        filename_match = re.search(r'filename="([^"]*)"', disposition)
-        if filename_match:
+        filename = _disposition_parameter(disposition, "filename")
+        if filename is not None:
             part_type = next(
                 (
                     line.split(":", 1)[1].strip()
@@ -84,7 +103,7 @@ def parse_multipart_form(
                 ),
                 "application/octet-stream",
             )
-            files[name] = (Path(filename_match.group(1)).name, part_type, content)
+            files[name] = (_safe_upload_name(filename), part_type, content)
         else:
             fields[name] = content.decode("utf-8", "replace")
     return fields, files

@@ -15,6 +15,10 @@ def test_pdf_upload_validation_checks_all_signals():
         validate_pdf_upload(b"%PDF-data", "notes.pdf", "text/plain", 100)
 
 
+def test_pdf_upload_allows_generic_mobile_browser_content_type():
+    validate_pdf_upload(b"%PDF-1.7\ndata", "notes.pdf", "application/octet-stream", 100)
+
+
 def test_temporary_pdf_is_cleaned_after_success_and_failure():
     captured: Path | None = None
     with pytest.raises(RuntimeError):
